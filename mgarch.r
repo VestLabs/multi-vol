@@ -7,8 +7,8 @@ for (package in packages) {
 }
 
 # Loading data
-returns <- c('data/returns_50_2023-03-04.csv', 'data/returns_50_2023-03-08.csv', 'data/returns_50_2023-03-12.csv')
-prices <- c('data/prices_50_2023-03-04.csv', 'data/prices_50_2023-03-08.csv', 'data/prices_50_2023-03-12.csv')
+returns <- c('multi-vol/data/returns_50_2023-03-04.csv', 'multi-vol/data/returns_50_2023-03-08.csv', 'multi-vol/data/returns_50_2023-03-12.csv')
+prices <- c('multi-vol/data/prices_50_2023-03-04.csv', 'multi-vol/data/prices_50_2023-03-08.csv', 'multi-vol/data/prices_50_2023-03-12.csv')
 
 # Concatenate returns and prices
 get_rs_ps <- function(returns, prices) {
@@ -142,8 +142,9 @@ get_clusters <- function(data, n_clusters = 3) {
         clusters <- cutree(tree, k = n_clusters)
     }  
 
-    plot(tree, cex = 0.6, hang = -1)
-    rect.hclust(tree, k = 3, cluster = clusters)
+    # Plot dendrogram
+    # plot(tree, cex = 0.6, hang = -1)
+    # rect.hclust(tree, k = 3, cluster = clusters)
 
     return(clusters)
 }
@@ -364,12 +365,12 @@ evar_premium_single <- function(prices, mu, sigma, alpha, imbalances, cum_entry,
 }
 
 # Example pricing
-sample_returns <- read.csv('data/returns_50_2023-03-20.csv')
-sample_returns <- sample_returns[,2:ncol(sample_returns)]
-sample_prices <- read.csv('data/prices_50_2023-03-20.csv')
-sample_prices <- sample_prices[nrow(prices),2:ncol(sample_prices)] |> unlist()
+sample_returns <- read.csv('multi-vol/data/returns_50_2023-03-20.csv')
+sample_returns <- sample_returns[, 2:ncol(sample_returns)]
+sample_prices <- read.csv('multi-vol/data/prices_50_2023-03-20.csv')
+sample_prices <- sample_prices[nrow(sample_prices), 2:ncol(sample_prices)] |> unlist()
 
-num_assets <- ncol(returns)
+num_assets <- ncol(sample_returns)
 mu <- replicate(num_assets, 1)
 # Calculate risk as the potential loss against traders in the next hour
 approx_sigma <- function(data, model) {
@@ -380,7 +381,7 @@ approx_sigma <- function(data, model) {
 uni_sigma <- approx_sigma(sample_returns, unigarch)
 dcc_sigma <- approx_sigma(sample_returns, dccgarch)
 go_sigma <- approx_sigma(sample_returns, partial(gogarch, mp = TRUE))
-h_sigma <- approx_sigma(sample_returns, partial(hgarch, mp = TRUE, round = TRUE))
+h_sigma <- approx_sigma(sample_returns, partial(hgarch, mp = TRUE, round = TRUE, n_clusters = 2))
 alpha <- 0.005
 btc_index <- 12
 eth_index <- 21
@@ -391,13 +392,13 @@ imbalance <- replicate(num_assets, 0)
 random_imbalance <- function(p) {
     random_imbalance <- replicate(num_assets, 0)
     for (i in 1:num_assets) {
-        random_imbalance[i] <- (2 * rbinom(1, 1, p) - 1) * rexp(1, 1) * 1000 / prices[i]
+        random_imbalance[i] <- (2 * rbinom(1, 1, p) - 1) * rexp(1, 1) * 1000 / sample_prices[i]
     }
     random_imbalance <- unlist(random_imbalance)
     return(random_imbalance)
 }
 
-mark_prices <- data.frame(sizes = sizes, index = prices[eth_index])
+mark_prices <- data.frame(sizes = sizes, index = sample_prices[eth_index])
 imbalances <- Dict$new(
     eth_long_heavy = replace(imbalance, eth_index, 20), 
     eth_short_heavy = replace(imbalance, eth_index, -20),
@@ -408,10 +409,10 @@ imbalances <- Dict$new(
 )
 
 for (imb_id in imbalances$keys) {
-    cum_entry <- imbalances$get(imb_id) %*% prices
+    cum_entry <- imbalances$get(imb_id) %*% sample_prices
     for (model in model_sigma$keys) {
         id <- sprintf("%s_%s", model, imb_id)
-        mark_prices[id] <- sapply(sizes, \(x) evar_premium_single(prices, mu, model_sigma$get(model), alpha, imbalances$get(imb_id), cum_entry, eth_index, x))
+        mark_prices[id] <- sapply(sizes, \(x) evar_premium_single(sample_prices, mu, model_sigma$get(model), alpha, imbalances$get(imb_id), cum_entry, eth_index, x))
     }
 }
-write.csv(mark_prices, "data/mark_prices.csv")
+
