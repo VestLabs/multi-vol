@@ -7,8 +7,8 @@ for (package in packages) {
 }
 
 # Loading data
-returns <- c('mGARCH/returns_50_2023-03-04.csv', 'mGARCH/returns_50_2023-03-08.csv', 'mGARCH/returns_50_2023-03-12.csv')
-prices <- c('mGARCH/prices_50_2023-03-04.csv', 'mGARCH/prices_50_2023-03-08.csv', 'mGARCH/prices_50_2023-03-12.csv')
+returns <- c('data/returns_50_2023-03-04.csv', 'data/returns_50_2023-03-08.csv', 'data/returns_50_2023-03-12.csv')
+prices <- c('data/prices_50_2023-03-04.csv', 'data/prices_50_2023-03-08.csv', 'data/prices_50_2023-03-12.csv')
 
 # Concatenate returns and prices
 get_rs_ps <- function(returns, prices) {
@@ -364,9 +364,9 @@ evar_premium_single <- function(prices, mu, sigma, alpha, imbalances, cum_entry,
 }
 
 # Example pricing
-sample_returns <- read.csv('mGARCH/returns_50_2023-03-20.csv')
+sample_returns <- read.csv('data/returns_50_2023-03-20.csv')
 sample_returns <- sample_returns[,2:ncol(sample_returns)]
-sample_prices <- read.csv('mGARCH/prices_50_2023-03-20.csv')
+sample_prices <- read.csv('data/prices_50_2023-03-20.csv')
 sample_prices <- sample_prices[nrow(prices),2:ncol(sample_prices)] |> unlist()
 
 num_assets <- ncol(returns)
@@ -414,4 +414,4 @@ for (imb_id in imbalances$keys) {
         mark_prices[id] <- sapply(sizes, \(x) evar_premium_single(prices, mu, model_sigma$get(model), alpha, imbalances$get(imb_id), cum_entry, eth_index, x))
     }
 }
-write.csv(mark_prices, "mGARCH/mark_prices.csv")
+write.csv(mark_prices, "data/mark_prices.csv")
