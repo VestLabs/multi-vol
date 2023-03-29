@@ -338,11 +338,16 @@ mcs <- calculate_mcs(
     T = 864, n_sample = 100, steps_ahead = 12
 )
 
+# Price distribution approximation by matching moments
+logreturn_to_price_dist <- function(prices, cov) {
+    mu <- prices * exp(diag(cov) / 2)
+    sigma <- diag(mu) %*% (expm(cov) - diag(length(prices))) %*% diag(mu)
+    return(list(mu, sigma))
+}
+
 # EVaR approximation
 evar_multinorm_approx <- function(prices, mu, sigma, alpha, imbalances, cum_entry, new_sizes, lp = 0) {
-    price_mu <- prices * mu 
-    price_sigma <- diag(prices) %*% sigma %*% diag(prices)
-    risk <- t(as.matrix(price_mu)) %*% as.matrix(imbalances + new_sizes) + sqrt(-2 * log(alpha) * t(as.matrix(imbalances + new_sizes)) %*% price_sigma %*% as.matrix(imbalances + new_sizes)) - (lp+cum_entry + t(as.matrix(prices)) %*% as.matrix(new_sizes))
+    risk <- t(as.matrix(mu)) %*% as.matrix(imbalances + new_sizes) + sqrt(-2 * log(alpha) * t(as.matrix(imbalances + new_sizes)) %*% sigma %*% as.matrix(imbalances + new_sizes)) - (lp+cum_entry + t(as.matrix(prices)) %*% as.matrix(new_sizes))
     return(risk)
 }
 
@@ -371,23 +376,22 @@ sample_prices <- read.csv('multi-vol/data/prices_50_2023-03-20.csv')
 sample_prices <- sample_prices[nrow(sample_prices), 2:ncol(sample_prices)] |> unlist()
 
 num_assets <- ncol(sample_returns)
-mu <- replicate(num_assets, 1)
 # Calculate risk as the potential loss against traders in the next hour
-approx_sigma <- function(data, model) {
-    num_assets <- ncol(data)
-    rcov <- model(data[(nrow(data) - 863):nrow(data), ], n_sample = 1)$get("rcovs")[[1]]
-    return(expm(rcov) - diag(num_assets))
+get_params <- function(prices, returns, model) {
+    num_assets <- ncol(returns)
+    lognorm_sigma <- 12 * model(returns[(nrow(returns) - 863):nrow(returns), ], n_sample = 1)$get("rcovs")[[1]]
+    return(logreturn_to_price_dist(prices, lognorm_sigma))
 }
-uni_sigma <- approx_sigma(sample_returns, unigarch)
-dcc_sigma <- approx_sigma(sample_returns, dccgarch)
-go_sigma <- approx_sigma(sample_returns, partial(gogarch, mp = TRUE))
-h_sigma <- approx_sigma(sample_returns, partial(hgarch, mp = TRUE, round = TRUE, n_clusters = 2))
+uni_params <- get_params(sample_prices, sample_returns, unigarch)
+dcc_params <- get_params(sample_prices, sample_returns, dccgarch)
+go_params <- get_params(sample_prices, sample_returns, partial(gogarch, mp = TRUE))
+h_params <- get_params(sample_prices, sample_returns, partial(hgarch, mp = TRUE, round = TRUE, n_clusters = 2))
 alpha <- 0.005
 btc_index <- 12
 eth_index <- 21
 sizes <- seq(-100, 100, by = 1)
 
-model_sigma <- Dict$new(uni = uni_sigma, dcc = dcc_sigma, go = go_sigma, h = h_sigma)
+model_params <- Dict$new(uni = uni_params, dcc = dcc_params, go = go_params, h = h_params)
 imbalance <- replicate(num_assets, 0)
 random_imbalance <- function(p) {
     random_imbalance <- replicate(num_assets, 0)
@@ -410,9 +414,10 @@ imbalances <- Dict$new(
 
 for (imb_id in imbalances$keys) {
     cum_entry <- imbalances$get(imb_id) %*% sample_prices
-    for (model in model_sigma$keys) {
+    for (model in model_params$keys) {
         id <- sprintf("%s_%s", model, imb_id)
-        mark_prices[id] <- sapply(sizes, \(x) evar_premium_single(sample_prices, mu, model_sigma$get(model), alpha, imbalances$get(imb_id), cum_entry, eth_index, x))
+        params <- model_params$get(model)
+        mark_prices[id] <- sapply(sizes, \(x) evar_premium_single(sample_prices, params[[1]], params[[2]], alpha, imbalances$get(imb_id), cum_entry, eth_index, x))
     }
 }
 
